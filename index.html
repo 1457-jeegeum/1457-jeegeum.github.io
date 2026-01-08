@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>간단 채팅 + YouTube 음악 플레이어</title>
+	<style>
+		/* ...existing code... */
+		body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; margin:0; padding:0; display:flex; height:100vh; }
+		#app { display:flex; flex:1; gap:12px; padding:12px; box-sizing:border-box; }
+		.panel { background:#fafafa; border:1px solid #e0e0e0; border-radius:8px; padding:12px; box-sizing:border-box; }
+		#chatPanel { width:36%; display:flex; flex-direction:column; }
+		#ytPanel { flex:1; display:flex; flex-direction:column; }
+		.messages { flex:1; overflow:auto; padding:8px; border-radius:6px; background:#fff; border:1px solid #eee; }
+		.msg { margin:6px 0; }
+		.msg.user { text-align:right; }
+		.msg .bubble { display:inline-block; padding:8px 10px; border-radius:12px; max-width:80%; }
+		.msg.user .bubble { background:#0078d4; color:#fff; }
+		.msg.bot .bubble { background:#f1f1f1; color:#222; }
+		.inputRow { display:flex; gap:8px; margin-top:8px; }
+		input[type="text"] { flex:1; padding:8px 10px; border:1px solid #ccc; border-radius:6px; }
+		button { padding:8px 12px; border-radius:6px; border:1px solid #bbb; background:#fff; cursor:pointer; }
+		.searchRow { display:flex; gap:8px; margin-bottom:8px; }
+		.results { overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+		.result { display:flex; gap:8px; padding:8px; border:1px solid #eee; border-radius:8px; align-items:center; background:#fff; }
+		.result img { width:120px; height:68px; object-fit:cover; border-radius:4px; }
+		.result .meta { flex:1; }
+		.playerWrap { margin-top:10px; border:1px solid #e7e7e7; border-radius:8px; padding:8px; background:#fff; }
+		.small { font-size:12px; color:#666; }
+	</style>
+</head>
+<body>
+	<div id="app">
+		<div id="chatPanel" class="panel">
+			<h3>채팅</h3>
+			<div class="messages" id="messages"></div>
+			<div class="inputRow">
+				<input id="chatInput" type="text" placeholder='메시지 입력 ("/yt 검색어"로 바로 검색)' />
+				<button id="sendBtn">전송</button>
+			</div>
+		</div>
+
+		<div id="ytPanel" class="panel">
+			<h3>YouTube 음악 재생</h3>
+			<div class="searchRow">
+				<input id="searchInput" type="text" placeholder="YouTube URL 또는 비디오 ID 입력" />
+				<button id="searchBtn">재생</button>
+			</div>
+
+			<div id="results" class="results" style="font-size:12px;color:#666;">입력 형식: https://www.youtube.com/watch?v=dQw4w9WgXcQ 또는 dQw4w9WgXcQ</div>
+
+			<div class="playerWrap">
+				<div id="player" style="width:100%;height:360px;background:#000;"></div>
+				<div class="small" id="nowInfo">재생 정보 없음</div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		// 설정: YouTube Data API Key (검색 미사용 시 필수 아님)
+		// const API_KEY = 'AIzaSyANczk7opwCS6wOY7r1KaDSI6PqMWW9RyQ'; // <-- 여기에 키를 입력하세요
+
+		const messagesEl = document.getElementById('messages');
+		const chatInput = document.getElementById('chatInput');
+		const sendBtn = document.getElementById('sendBtn');
+
+		const searchInput = document.getElementById('searchInput');
+		const searchBtn = document.getElementById('searchBtn');
+		const resultsEl = document.getElementById('results');
+		const nowInfo = document.getElementById('nowInfo');
+
+		let ytPlayer = null;
+		let ytReady = false;
+
+		// 유튜브 IFrame API 로드 (에러 핸들링, async)
+		const tag = document.createElement('script');
+		tag.src = "https://www.youtube.com/iframe_api";
+		tag.async = true;
+		tag.onerror = () => {
+			console.error('YouTube IFrame API 로드 실패');
+			nowInfo.textContent = '오류: YouTube IFrame API 로드 실패(네트워크 또는 차단). 콘솔 확인.';
+			alert('YouTube IFrame API를 로드할 수 없습니다. 네트워크 또는 브라우저 확장 기능을 확인하세요.');
+		};
+		document.head.appendChild(tag);
+
+		function onYouTubeIframeAPIReady() {
+			ytReady = true;
+			console.log('YouTube IFrame API ready');
+			nowInfo.textContent = 'YouTube API 준비 완료';
+			// 플레이어는 최초 재생 시 생성
+		}
+		window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+		function createPlayer(videoId) {
+			try {
+				if (!ytReady) {
+					console.warn('YT API not ready yet.');
+					nowInfo.textContent = '대기: YouTube API 준비 중...';
+				}
+				if (!videoId) {
+					throw new Error('videoId가 없습니다');
+				}
+				if (ytPlayer) {
+					console.log('기존 플레이어에 로드:', videoId);
+					ytPlayer.loadVideoById(videoId);
+					return;
+				}
+				ytPlayer = new YT.Player('player', {
+					height: '360',
+					width: '100%',
+					videoId: videoId,
+					playerVars: { controls: 1, rel: 0, playsinline: 1, autoplay: 1 },
+					events: {
+						onReady: function(e) {
+							console.log('Player ready, 시도 재생');
+							// 사용자 제스처로 생성된 경우 대부분 재생 가능. 차단되면 음소거 후 재시도.
+							try { e.target.playVideo(); }
+							catch (err) { console.warn('playVideo 예외:', err); }
+							// 재생이 안되면 음소거 후 재시도
+							setTimeout(() => {
+								const state = (e.target && e.target.getPlayerState) ? e.target.getPlayerState() : -2;
+								if (state !== 1) { // 1 == playing
+									console.warn('자동 재생 차단 가능, 음소거 후 재시도');
+									try {
+										e.target.mute();
+										e.target.playVideo();
+										// 잠시 후 음소거 해제
+										setTimeout(() => { try { e.target.unMute(); } catch(_){} }, 1200);
+									} catch (err2) {
+										console.error('음소거 재시도 실패:', err2);
+										nowInfo.textContent = '재생 실패: 자동 재생 차단. 결과에서 "YouTube에서 열기"를 사용하세요.';
+									}
+								} else {
+									nowInfo.textContent = '재생중';
+								}
+							}, 600);
+						},
+						onStateChange: function(e) {
+							// 상태 변화 로깅
+							console.log('YT state change', e.data);
+						},
+						onError: function(e) {
+							console.error('YT Player error', e.data);
+							nowInfo.textContent = '플레이어 오류 코드: ' + e.data + '. (콘솔 확인)';
+						}
+					}
+				});
+			} catch (err) {
+				console.error('createPlayer 실패:', err);
+				nowInfo.textContent = '플레이어 생성 오류: ' + (err.message || err);
+				alert('재생 시작 중 오류가 발생했습니다. 콘솔을 확인하세요.');
+			}
+		}
+
+		function renderMessage(text, who='user') {
+			const div = document.createElement('div');
+			div.className = 'msg ' + (who==='user' ? 'user' : 'bot');
+			const b = document.createElement('div');
+			b.className = 'bubble';
+			b.textContent = text;
+			div.appendChild(b);
+			messagesEl.appendChild(div);
+			messagesEl.scrollTop = messagesEl.scrollHeight;
+		}
+
+		function extractVideoId(input) {
+			// URL 형식: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+			let match = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+			if (match) return match[1];
+			// 짧은 URL: https://youtu.be/dQw4w9WgXcQ
+			match = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+			if (match) return match[1];
+			// 그냥 비디오 ID
+			if (/^[a-zA-Z0-9_-]{11}$/.test(input.trim())) return input.trim();
+			return null;
+		}
+
+		function doPlay(input) {
+			const vid = extractVideoId(input);
+			if (!vid) {
+				alert('유효한 YouTube URL 또는 비디오 ID가 아닙니다.');
+				return;
+			}
+			nowInfo.textContent = `재생 중: ${vid}`;
+			try {
+				if (ytReady) createPlayer(vid);
+				else {
+					const wait = setInterval(() => {
+						if (ytReady) { clearInterval(wait); createPlayer(vid); }
+					}, 200);
+				}
+			} catch (err) {
+				console.error('재생 중 예외:', err);
+				alert('재생 중 오류가 발생했습니다.');
+			}
+		}
+
+		function botReply(userText) {
+			// 간단한 키워드 기반 응답
+			const t = userText.toLowerCase();
+			if (t.startsWith('/yt ')) {
+				const q = userText.slice(4).trim();
+				if (q) {
+					renderMessage('재생 시도: ' + q, 'bot');
+					doPlay(q);
+					return;
+				}
+			}
+			if (t.includes('안녕') || t.includes('hi')) {
+				renderMessage('안녕하세요! "/yt 검색어"로 유튜브 음악을 검색할 수 있습니다.', 'bot');
+				return;
+			}
+			// 기본 에코
+			renderMessage('알겠습니다: ' + userText, 'bot');
+		}
+
+		sendBtn.addEventListener('click', () => {
+			const v = chatInput.value.trim();
+			if (!v) return;
+			renderMessage(v, 'user');
+			chatInput.value = '';
+			botReply(v);
+		});
+		chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+
+		searchBtn.addEventListener('click', () => {
+			const input = searchInput.value.trim();
+			if (input) doPlay(input);
+		});
+		searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchBtn.click(); });
+
+		// 초기 예시 메시지
+		renderMessage('안녕하세요! YouTube URL 또는 비디오 ID를 입력하면 재생됩니다. 채팅에서 "/yt URL" 형식으로도 재생 가능.', 'bot');
+	</script>
+</body>
+</html>
