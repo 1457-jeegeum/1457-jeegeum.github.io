@@ -7,9 +7,9 @@
 	<style>
 		/* ...existing code... */
 		body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; margin:0; padding:0; display:flex; height:100vh; }
-		#app { display:flex; flex:1; gap:12px; padding:12px; box-sizing:border-box; flex-direction:row; }
+		#app { display:flex; flex:1; gap:12px; padding:12px; box-sizing:border-box; }
 		.panel { background:#fafafa; border:1px solid #e0e0e0; border-radius:8px; padding:12px; box-sizing:border-box; }
-		#chatPanel { width:36%; display:flex; flex-direction:column; min-width:250px; }
+		#chatPanel { width:36%; display:flex; flex-direction:column; }
 		#ytPanel { flex:1; display:flex; flex-direction:column; }
 		.messages { flex:1; overflow:auto; padding:8px; border-radius:6px; background:#fff; border:1px solid #eee; }
 		.msg { margin:6px 0; }
@@ -18,46 +18,16 @@
 		.msg.user .bubble { background:#0078d4; color:#fff; }
 		.msg.bot .bubble { background:#f1f1f1; color:#222; }
 		.inputRow { display:flex; gap:8px; margin-top:8px; }
-		input[type="text"] { flex:1; padding:10px 12px; border:1px solid #ccc; border-radius:6px; font-size:16px; }
-		button { padding:10px 14px; border-radius:6px; border:1px solid #bbb; background:#fff; cursor:pointer; font-size:14px; font-weight:600; }
-		button:active { background:#e8e8e8; }
+		input[type="text"] { flex:1; padding:8px 10px; border:1px solid #ccc; border-radius:6px; }
+		button { padding:8px 12px; border-radius:6px; border:1px solid #bbb; background:#fff; cursor:pointer; }
 		.searchRow { display:flex; gap:8px; margin-bottom:8px; }
-		.results { overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+		.results { overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
 		.result { display:flex; gap:8px; padding:8px; border:1px solid #eee; border-radius:8px; align-items:center; background:#fff; }
 		.result img { width:120px; height:68px; object-fit:cover; border-radius:4px; }
 		.result .meta { flex:1; }
 		.playerWrap { margin-top:10px; border:1px solid #e7e7e7; border-radius:8px; padding:8px; background:#fff; }
 		.small { font-size:12px; color:#666; }
-
-		/* 모바일 반응형 */
-		@media (max-width: 768px) {
-			#app { flex-direction:column; padding:8px; gap:8px; }
-			#chatPanel { width:100%; }
-			#ytPanel { width:100%; }
-			.messages { height:200px; }
-			.results { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
-			.result { flex-direction:column; align-items:flex-start; }
-			.result img { width:100%; height:auto; }
-			.result .meta { width:100%; }
-			.playerWrap { margin-top:8px; padding:6px; }
-			#player { height:auto !important; aspect-ratio:16/9; }
-			h3 { margin:0 0 8px 0; font-size:16px; }
-			.panel { padding:8px; }
-			input[type="text"] { font-size:16px; padding:10px 12px; }
-			button { padding:12px 14px; font-size:15px; }
-		}
-
-		@media (max-width: 480px) {
-			#app { padding:6px; gap:6px; }
-			.messages { height:150px; }
-			.results { grid-template-columns:1fr; }
-			.result { gap:6px; padding:6px; }
-			.result img { width:100px; height:56px; }
-			.small { font-size:11px; }
-			h3 { font-size:14px; }
-			.panel { padding:6px; }
-		}
- 	</style>
+	</style>
 </head>
 <body>
 	<div id="app">
@@ -73,24 +43,21 @@
 		<div id="ytPanel" class="panel">
 			<h3>YouTube 음악</h3>
 			<div class="searchRow">
-				<input id="searchInput" type="text" placeholder="검색어 또는 URL" />
-				<button id="searchBtn" style="flex-shrink:0;">검색</button>
+				<input id="searchInput" type="text" placeholder="URL 또는 비디오 ID" />
+				<button id="searchBtn">검색</button>
 			</div>
 
 			<div id="results" class="results"></div>
-
-			<div class="playerWrap">
-				<div id="player" style="width:100%;height:360px;background:#000;aspect-ratio:16/9;"></div>
-				<div class="small" id="nowInfo">재생 정보 없음</div>
-			</div>
-		</div>
+ 
+ 			<div class="playerWrap">
+ 				<div id="player" style="width:100%;height:360px;background:#000;"></div>
+ 				<div class="small" id="nowInfo">재생 정보 없음</div>
+ 			</div>
+ 		</div>
 	</div>
 
 	<script>
 		// ...existing code...
-		// 설정: 여기에 자신의 YouTube Data API Key를 넣으세요.
-		const API_KEY = ''; // <-- 여기에 키를 입력하세요
-
 		const messagesEl = document.getElementById('messages');
 		const chatInput = document.getElementById('chatInput');
 		const sendBtn = document.getElementById('sendBtn');
@@ -147,19 +114,43 @@
 			messagesEl.scrollTop = messagesEl.scrollHeight;
 		}
 
+		function extractVideoId(input) {
+			let match = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+			if (match) return match[1];
+			match = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+			if (match) return match[1];
+			if (/^[a-zA-Z0-9_-]{11}$/.test(input.trim())) return input.trim();
+			return null;
+		}
+
+		function doPlay(input) {
+			const vid = extractVideoId(input);
+			if (!vid) {
+				alert('유효한 YouTube URL 또는 비디오 ID가 아닙니다.\n예: https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+				return;
+			}
+			nowInfo.textContent = `재생 중: ${vid}`;
+			resultsEl.innerHTML = '';
+			if (ytReady) createPlayer(vid);
+			else {
+				const wait = setInterval(() => {
+					if (ytReady) { clearInterval(wait); createPlayer(vid); }
+				}, 200);
+			}
+		}
+
 		function botReply(userText) {
-			// 간단한 키워드 기반 응답
 			const t = userText.toLowerCase();
 			if (t.startsWith('/yt ')) {
 				const q = userText.slice(4).trim();
 				if (q) {
-					renderMessage('검색 중: ' + q, 'bot');
-					doSearch(q);
+					renderMessage('재생 시도: ' + q, 'bot');
+					doPlay(q);
 					return;
 				}
 			}
 			if (t.includes('안녕') || t.includes('hi')) {
-				renderMessage('안녕하세요! "/yt 검색어"로 유튜브 음악을 검색할 수 있습니다.', 'bot');
+				renderMessage('안녕하세요! URL이나 비디오 ID를 입력하면 재생됩니다. "/yt URL" 형식으로도 가능합니다.', 'bot');
 				return;
 			}
 			// 기본 에코
@@ -175,73 +166,14 @@
 		});
 		chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBtn.click(); });
 
-		// YouTube 검색
-		async function doSearch(query) {
-			if (!API_KEY) {
-				alert('YouTube API 키가 설정되어 있지 않습니다. sh.html 파일의 API_KEY 변수에 키를 넣으세요.');
-				return;
-			}
-			const url = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=12&q=' + encodeURIComponent(query) + '&key=' + API_KEY;
-			try {
-				const res = await fetch(url);
-				if (!res.ok) throw new Error('HTTP ' + res.status);
-				const data = await res.json();
-				renderResults(data.items || []);
-			} catch (err) {
-				console.error(err);
-				alert('검색 중 오류가 발생했습니다. 콘솔을 확인하세요.');
-			}
-		}
-
-		function renderResults(items) {
-			resultsEl.innerHTML = '';
-			if (!items.length) {
-				resultsEl.textContent = '결과 없음';
-				return;
-			}
-			for (const it of items) {
-				const vid = it.id.videoId;
-				const thumb = it.snippet.thumbnails.medium?.url || it.snippet.thumbnails.default?.url || '';
-				const title = it.snippet.title;
-				const channel = it.snippet.channelTitle;
-				const div = document.createElement('div');
-				div.className = 'result';
-				div.innerHTML = `
-					<img src="${thumb}" alt="${title}">
-					<div class="meta">
-						<div style="font-weight:600;">${escapeHtml(title)}</div>
-						<div class="small">${escapeHtml(channel)}</div>
-						<div style="margin-top:6px;">
-							<button data-vid="${vid}">재생</button>
-						</div>
-					</div>
-				`;
-				resultsEl.appendChild(div);
-				div.querySelector('button').addEventListener('click', () => {
-					nowInfo.textContent = `재생중: ${title} — ${channel}`;
-					if (ytReady) createPlayer(vid);
-					else {
-						// 큐해서 API 준비 후 재생
-						const wait = setInterval(() => {
-							if (ytReady) { clearInterval(wait); createPlayer(vid); }
-						}, 200);
-					}
-				});
-			}
-		}
-
-		function escapeHtml(s) {
-			return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-		}
-
 		searchBtn.addEventListener('click', () => {
 			const q = searchInput.value.trim();
-			if (q) doSearch(q);
+			if (q) doPlay(q);
 		});
 		searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchBtn.click(); });
 
 		// 초기 예시 메시지
-		renderMessage('안녕하세요! 오른쪽에서 유튜브 음악을 검색하고 재생할 수 있습니다. 채팅에서 "/yt 검색어"로도 검색 가능.', 'bot');
+		renderMessage('안녕하세요! YouTube URL 또는 비디오 ID를 입력하면 재생됩니다.', 'bot');
 	</script>
 </body>
 </html>
